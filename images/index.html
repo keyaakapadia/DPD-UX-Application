@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swipe Frames — Fullscreen</title>
+  <style>
+    /* ====== RESET & LAYOUT ====== */
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden; /* keep the viewport fixed */
+      background: #000;
+      touch-action: none; /* enable custom gesture handling */
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Container that holds two sliding layers for a buttery swipe */
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .layer {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      will-change: transform;
+      background-position: center center;
+      background-repeat: no-repeat;
+      background-size: cover; /* make image cover the viewport */
+      transform: translateX(0);
+    }
+
+    /* Progress dots (optional) */
+    .dots {
+      position: absolute;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      transition: background .25s ease;
+    }
+    .dot.active { background: rgba(255,255,255,0.95); }
+
+    /* Small hint (tap/drag) — can be removed */
+    .hint {
+      position: absolute;
+      right: 16px;
+      bottom: 16px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.45);
+      color: #fff;
+      font-size: 12px;
+      letter-spacing: .3px;
+      z-index: 10;
+      backdrop-filter: blur(6px);
+    }
+  </style>
+</head>
+<body>
+  <!--
+    HOW TO USE
+    1) Replace the 9 placeholder image paths in the `frames` array below with your own image URLs.
+       - Local: "frames/1.jpg" ... "frames/9.jpg"
+       - Remote: "https://example.com/myimage.jpg"
+    2) That's it. The swipe loops: last -> first -> last.
+
+    Gestures supported: touch (drag), mouse drag, and arrow keys.
+  -->
+
+  <div class="stage" id="stage">
+    <div class="layer" id="cur"></div>
+    <div class="layer" id="next"></div>
+    <div class="dots" id="dots"></div>
+    <div class="hint">Swipe ◀︎ to change • ← / → keys</div>
+  </div>
+
+  <script>
+    // ====== CONFIG ======
+    const frames = [
+      './Slide%2016_9%20-%201.jpg',
+      './Slide%2016_9%20-%202.jpg',
+      './Slide%2016_9%20-%203.jpg',
+      './Slide%2016_9%20-%204.jpg',
+      './Slide%2016_9%20-%205.jpg',
+      './Slide%2016_9%20-%206.jpg',
+      './Slide%2016_9%20-%207.jpg',
+      './Slide%2016_9%20-%208.jpg',
+      './Slide%2016_9%20-%209.jpg'
+    ];
+
+    if (frames.length !== 9) console.warn('You currently have', frames.length, 'frames. The spec asks for 9.');
+
+    // ====== ELEMENTS ======
+    const stage = document.getElementById('stage');
+    const curEl = document.getElementById('cur');
+    const nextEl = document.getElementById('next');
+    const dotsEl = document.getElementById('dots');
+
+    // Build dots
+    dotsEl.innerHTML = '';
+    frames.forEach((_, i) => {
+      const d = document.createElement('div');
+      d.className = 'dot' + (i === 0 ? ' active' : '');
+      dotsEl.appendChild(d);
+    });
+    const dots = Array.from(dotsEl.children);
+
+    // ====== STATE ======
+    let index = 0;           // current frame index
+    let isDragging = false;  // gesture flag
+    let startX = 0;          // drag start X
+    let deltaX = 0;          // current drag delta
+    let animating = false;   // lock while animating
+
+    // Preload helper
+    const cache = new Map();
+    function preload(src) {
+      if (cache.has(src)) return;
+      const img = new Image();
+      img.src = src;
+      cache.set(src, img);
+    }
+
+    // Preload neighbors for snappy loops
+    function warmNeighbors(i) {
+      preload(frames[i]);
+      preload(frames[(i + 1) % frames.length]);
+      preload(frames[(i - 1 + frames.length) % frames.length]);
+    }
+
+    // Apply current/next backgrounds
+    function setLayers(curIdx, nxtIdx) {
+      curEl.style.backgroundImage = `url("${frames[curIdx]}")`;
+      nextEl.style.backgroundImage = `url("${frames[nxtIdx]}")`;
+    }
+
+    function markDots(i) {
+      dots.forEach((d, k) => d.classList.toggle('active', k === i));
+    }
+
+    function init() {
+      setLayers(index, (index + 1) % frames.length);
+      warmNeighbors(index);
+      curEl.style.transform = 'translateX(0px)';
+      nextEl.style.transform = 'translateX(100%)';
+      markDots(index);
+    }
+
+    // Core animation (in px)
+    function animateTo(target, onDone) {
+      animating = true;
+      const start = performance.now();
+      const duration = 260;
+      const startCur = getTranslateX(curEl);
+      const startNext = getTranslateX(nextEl);
+      const endCur = target;            // -stageW (complete left) | 0 (snap back) | +stageW (complete right)
+      const endNext = target === -stage.clientWidth ? 0 : target === 0 ? stage.clientWidth : 0;
+
+      function step(t) {
+        const p = Math.min(1, (t - start) / duration);
+        const ease = 1 - Math.pow(1 - p, 3);
+        const curX = lerp(startCur, endCur, ease);
+        const nextX = lerp(startNext, endNext, ease);
+        curEl.style.transform = `translateX(${curX}px)`;
+        nextEl.style.transform = `translateX(${nextX}px)`;
+        if (p < 1) requestAnimationFrame(step); else {
+          animating = false;
+          onDone && onDone();
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function getTranslateX(el) {
+      const st = getComputedStyle(el).transform;
+      if (st && st !== 'none') {
+        const m = new DOMMatrix(st);
+        return m.m41; // translation X in px
+      }
+      return 0;
+    }
+
+    function goToNext() {
+      if (animating) return;
+      const nextIdx = (index + 1) % frames.length;
+      setLayers(index, nextIdx);
+      animateTo(-stage.clientWidth, () => {
+        // shift layers: next becomes current
+        index = nextIdx;
+        curEl.style.transform = 'translateX(0px)';
+        nextEl.style.transform = 'translateX(100%)';
+        setLayers(index, (index + 1) % frames.length);
+        warmNeighbors(index);
+        markDots(index);
+      });
+    }
+
+    function goToPrev() {
+      if (animating) return;
+      const prevIdx = (index - 1 + frames.length) % frames.length;
+      // prepare nextEl as previous to the left
+      nextEl.style.backgroundImage = `url("${frames[prevIdx]}")`;
+      nextEl.style.transform = 'translateX(-100%)';
+      animateTo(stage.clientWidth, () => {
+        index = prevIdx;
+        curEl.style.transform = 'translateX(0px)';
+        nextEl.style.transform = 'translateX(100%)';
+        setLayers(index, (index + 1) % frames.length);
+        warmNeighbors(index);
+        markDots(index);
+      });
+    }
+
+    // ====== INPUT HANDLERS ======
+    function onDown(x) {
+      if (animating) return;
+      isDragging = true;
+      startX = x;
+      deltaX = 0;
+      // prepare next as the likely direction (default forward)
+      setLayers(index, (index + 1) % frames.length);
+      curEl.style.transition = nextEl.style.transition = 'none';
+    }
+
+    function onMove(x) {
+      if (!isDragging || animating) return;
+      deltaX = x - startX;
+
+      // SPECIAL REQUEST: if we're on the FIRST frame and the user swipes LEFT even a little,
+      // immediately SNAP to the next frame (no threshold).
+      if (index === 0 && deltaX < -6) {
+        isDragging = false; // end the drag and auto-advance
+        return goToNext();
+      }
+
+      // Normal drag preview
+      const w = stage.clientWidth;
+      if (deltaX < 0) {
+        // dragging left: show next frame coming from right
+        nextEl.style.backgroundImage = `url("${frames[(index + 1) % frames.length]}")`;
+        nextEl.style.transform = `translateX(${w + deltaX}px)`;
+      } else if (deltaX > 0) {
+        // dragging right: show previous frame coming from left
+        const prevIdx = (index - 1 + frames.length) % frames.length;
+        nextEl.style.backgroundImage = `url("${frames[prevIdx]}")`;
+        nextEl.style.transform = `translateX(${-w + deltaX}px)`;
+      }
+      curEl.style.transform = `translateX(${deltaX}px)`;
+    }
+
+    function onUp() {
+      if (!isDragging || animating) return;
+      isDragging = false;
+      const w = stage.clientWidth;
+      const threshold = w * 0.16; // 16% swipe to commit
+
+      if (deltaX <= -threshold) return goToNext();
+      if (deltaX >= threshold)  return goToPrev();
+
+      // snap back
+      animateTo(0, () => {
+        curEl.style.transform = 'translateX(0px)';
+        nextEl.style.transform = 'translateX(100%)';
+        setLayers(index, (index + 1) % frames.length);
+      });
+    }
+
+    // Mouse + touch unification
+    stage.addEventListener('pointerdown', e => {
+      stage.setPointerCapture(e.pointerId);
+      onDown(e.clientX);
+    });
+    stage.addEventListener('pointermove', e => onMove(e.clientX));
+    stage.addEventListener('pointerup',   onUp);
+    stage.addEventListener('pointercancel', onUp);
+
+    // Keyboard arrows
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft')  goToPrev();
+      if (e.key === 'ArrowRight') goToNext();
+    });
+
+    // Resize safety
+    window.addEventListener('resize', () => {
+      // reset transforms on resize to avoid drift
+      curEl.style.transform = 'translateX(0px)';
+      nextEl.style.transform = 'translateX(100%)';
+    });
+
+    // Boot
+    init();
+  </script>
+</body>
+</html>
