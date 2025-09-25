@@ -3,19 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swipe Frames — Fullscreen</title>
+  <title>Syncd - UX Case Study</title>
   <style>
-    /* ====== RESET & LAYOUT ====== */
     html, body {
       height: 100%;
       margin: 0;
-      overflow: hidden; /* keep the viewport fixed */
+      overflow: hidden;
       background: #000;
-      touch-action: none; /* enable custom gesture handling */
+      touch-action: none;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
     }
 
-    /* Container that holds two sliding layers for a buttery swipe */
     .stage {
       position: relative;
       width: 100vw;
@@ -34,11 +32,11 @@
       will-change: transform;
       background-position: center center;
       background-repeat: no-repeat;
-      background-size: cover; /* make image cover the viewport */
+      background-size: contain;   /* ✅ fit entire image inside screen, no cropping */
+      background-color: #000;     /* fill behind */
       transform: translateX(0);
     }
 
-    /* Progress dots (optional) */
     .dots {
       position: absolute;
       left: 50%;
@@ -57,7 +55,6 @@
     }
     .dot.active { background: rgba(255,255,255,0.95); }
 
-    /* Small hint (tap/drag) — can be removed */
     .hint {
       position: absolute;
       right: 16px;
@@ -74,15 +71,6 @@
   </style>
 </head>
 <body>
-  <!--
-    HOW TO USE
-    1) The 13 image paths in the `frames` array below match files in the same folder:
-       "Slide 16_9 - 1.jpg" ... "Slide 16_9 - 13.jpg"
-    2) That's it. The swipe loops: last -> first -> last.
-
-    Gestures supported: touch (drag), mouse drag, and arrow keys.
-  -->
-
   <div class="stage" id="stage">
     <div class="layer" id="cur"></div>
     <div class="layer" id="next"></div>
@@ -91,7 +79,6 @@
   </div>
 
   <script>
-    // ====== CONFIG ======
     const frames = [
       './Slide 16_9 - 1.jpg',
       './Slide 16_9 - 2.jpg',
@@ -108,9 +95,6 @@
       './Slide 16_9 - 13.jpg'
     ];
 
-    if (frames.length !== 13) console.warn('You currently have', frames.length, 'frames. The spec asks for 13.');
-
-    // ====== ELEMENTS ======
     const stage = document.getElementById('stage');
     const curEl = document.getElementById('cur');
     const nextEl = document.getElementById('next');
@@ -125,14 +109,12 @@
     });
     const dots = Array.from(dotsEl.children);
 
-    // ====== STATE ======
-    let index = 0;           // current frame index
-    let isDragging = false;  // gesture flag
-    let startX = 0;          // drag start X
-    let deltaX = 0;          // current drag delta
-    let animating = false;   // lock while animating
+    let index = 0;
+    let isDragging = false;
+    let startX = 0;
+    let deltaX = 0;
+    let animating = false;
 
-    // Preload helper
     const cache = new Map();
     function preload(src) {
       if (cache.has(src)) return;
@@ -141,14 +123,12 @@
       cache.set(src, img);
     }
 
-    // Preload neighbors for snappy loops
     function warmNeighbors(i) {
       preload(frames[i]);
       preload(frames[(i + 1) % frames.length]);
       preload(frames[(i - 1 + frames.length) % frames.length]);
     }
 
-    // Apply current/next backgrounds
     function setLayers(curIdx, nxtIdx) {
       curEl.style.backgroundImage = `url("${frames[curIdx]}")`;
       nextEl.style.backgroundImage = `url("${frames[nxtIdx]}")`;
@@ -166,14 +146,13 @@
       markDots(index);
     }
 
-    // Core animation (in px)
     function animateTo(target, onDone) {
       animating = true;
       const start = performance.now();
       const duration = 260;
       const startCur = getTranslateX(curEl);
       const startNext = getTranslateX(nextEl);
-      const endCur = target;            // -stageW | 0 | +stageW
+      const endCur = target;
       const endNext = target === -stage.clientWidth ? 0 : target === 0 ? stage.clientWidth : 0;
 
       function step(t) {
@@ -192,12 +171,11 @@
     }
 
     function lerp(a, b, t) { return a + (b - a) * t; }
-
     function getTranslateX(el) {
       const st = getComputedStyle(el).transform;
       if (st && st !== 'none') {
         const m = new DOMMatrix(st);
-        return m.m41; // translation X in px
+        return m.m41;
       }
       return 0;
     }
@@ -231,7 +209,6 @@
       });
     }
 
-    // ====== INPUT HANDLERS ======
     function onDown(x) {
       if (animating) return;
       isDragging = true;
@@ -244,21 +221,15 @@
     function onMove(x) {
       if (!isDragging || animating) return;
       deltaX = x - startX;
-
-      // SPECIAL: if we're on the FIRST frame and the user swipes LEFT even a little,
-      // immediately SNAP to the next frame (no threshold).
       if (index === 0 && deltaX < -6) {
         isDragging = false;
         return goToNext();
       }
-
       const w = stage.clientWidth;
       if (deltaX < 0) {
-        // dragging left: show next frame coming from right
         nextEl.style.backgroundImage = `url("${frames[(index + 1) % frames.length]}")`;
         nextEl.style.transform = `translateX(${w + deltaX}px)`;
       } else if (deltaX > 0) {
-        // dragging right: show previous frame coming from left
         const prevIdx = (index - 1 + frames.length) % frames.length;
         nextEl.style.backgroundImage = `url("${frames[prevIdx]}")`;
         nextEl.style.transform = `translateX(${-w + deltaX}px)`;
@@ -270,12 +241,9 @@
       if (!isDragging || animating) return;
       isDragging = false;
       const w = stage.clientWidth;
-      const threshold = w * 0.16; // 16% swipe to commit
-
+      const threshold = w * 0.16;
       if (deltaX <= -threshold) return goToNext();
       if (deltaX >= threshold)  return goToPrev();
-
-      // snap back
       animateTo(0, () => {
         curEl.style.transform = 'translateX(0px)';
         nextEl.style.transform = 'translateX(100%)';
@@ -283,7 +251,6 @@
       });
     }
 
-    // Mouse + touch unification
     stage.addEventListener('pointerdown', e => {
       stage.setPointerCapture(e.pointerId);
       onDown(e.clientX);
@@ -292,19 +259,16 @@
     stage.addEventListener('pointerup',   onUp);
     stage.addEventListener('pointercancel', onUp);
 
-    // Keyboard arrows
     window.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft')  goToPrev();
       if (e.key === 'ArrowRight') goToNext();
     });
 
-    // Resize safety
     window.addEventListener('resize', () => {
       curEl.style.transform = 'translateX(0px)';
       nextEl.style.transform = 'translateX(100%)';
     });
 
-    // Boot
     init();
   </script>
 </body>
