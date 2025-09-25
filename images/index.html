@@ -76,9 +76,8 @@
 <body>
   <!--
     HOW TO USE
-    1) Replace the 9 placeholder image paths in the `frames` array below with your own image URLs.
-       - Local: "frames/1.jpg" ... "frames/9.jpg"
-       - Remote: "https://example.com/myimage.jpg"
+    1) The 13 image paths in the `frames` array below match files in the same folder:
+       "Slide 16_9 - 1.jpg" ... "Slide 16_9 - 13.jpg"
     2) That's it. The swipe loops: last -> first -> last.
 
     Gestures supported: touch (drag), mouse drag, and arrow keys.
@@ -94,18 +93,22 @@
   <script>
     // ====== CONFIG ======
     const frames = [
-      './Slide%2016_9%20-%201.jpg',
-      './Slide%2016_9%20-%202.jpg',
-      './Slide%2016_9%20-%203.jpg',
-      './Slide%2016_9%20-%204.jpg',
-      './Slide%2016_9%20-%205.jpg',
-      './Slide%2016_9%20-%206.jpg',
-      './Slide%2016_9%20-%207.jpg',
-      './Slide%2016_9%20-%208.jpg',
-      './Slide%2016_9%20-%209.jpg'
+      './Slide 16_9 - 1.jpg',
+      './Slide 16_9 - 2.jpg',
+      './Slide 16_9 - 3.jpg',
+      './Slide 16_9 - 4.jpg',
+      './Slide 16_9 - 5.jpg',
+      './Slide 16_9 - 6.jpg',
+      './Slide 16_9 - 7.jpg',
+      './Slide 16_9 - 8.jpg',
+      './Slide 16_9 - 9.jpg',
+      './Slide 16_9 - 10.jpg',
+      './Slide 16_9 - 11.jpg',
+      './Slide 16_9 - 12.jpg',
+      './Slide 16_9 - 13.jpg'
     ];
 
-    if (frames.length !== 9) console.warn('You currently have', frames.length, 'frames. The spec asks for 9.');
+    if (frames.length !== 13) console.warn('You currently have', frames.length, 'frames. The spec asks for 13.');
 
     // ====== ELEMENTS ======
     const stage = document.getElementById('stage');
@@ -170,7 +173,7 @@
       const duration = 260;
       const startCur = getTranslateX(curEl);
       const startNext = getTranslateX(nextEl);
-      const endCur = target;            // -stageW (complete left) | 0 (snap back) | +stageW (complete right)
+      const endCur = target;            // -stageW | 0 | +stageW
       const endNext = target === -stage.clientWidth ? 0 : target === 0 ? stage.clientWidth : 0;
 
       function step(t) {
@@ -204,7 +207,6 @@
       const nextIdx = (index + 1) % frames.length;
       setLayers(index, nextIdx);
       animateTo(-stage.clientWidth, () => {
-        // shift layers: next becomes current
         index = nextIdx;
         curEl.style.transform = 'translateX(0px)';
         nextEl.style.transform = 'translateX(100%)';
@@ -217,7 +219,6 @@
     function goToPrev() {
       if (animating) return;
       const prevIdx = (index - 1 + frames.length) % frames.length;
-      // prepare nextEl as previous to the left
       nextEl.style.backgroundImage = `url("${frames[prevIdx]}")`;
       nextEl.style.transform = 'translateX(-100%)';
       animateTo(stage.clientWidth, () => {
@@ -236,7 +237,6 @@
       isDragging = true;
       startX = x;
       deltaX = 0;
-      // prepare next as the likely direction (default forward)
       setLayers(index, (index + 1) % frames.length);
       curEl.style.transition = nextEl.style.transition = 'none';
     }
@@ -245,14 +245,13 @@
       if (!isDragging || animating) return;
       deltaX = x - startX;
 
-      // SPECIAL REQUEST: if we're on the FIRST frame and the user swipes LEFT even a little,
+      // SPECIAL: if we're on the FIRST frame and the user swipes LEFT even a little,
       // immediately SNAP to the next frame (no threshold).
       if (index === 0 && deltaX < -6) {
-        isDragging = false; // end the drag and auto-advance
+        isDragging = false;
         return goToNext();
       }
 
-      // Normal drag preview
       const w = stage.clientWidth;
       if (deltaX < 0) {
         // dragging left: show next frame coming from right
@@ -301,7 +300,6 @@
 
     // Resize safety
     window.addEventListener('resize', () => {
-      // reset transforms on resize to avoid drift
       curEl.style.transform = 'translateX(0px)';
       nextEl.style.transform = 'translateX(100%)';
     });
